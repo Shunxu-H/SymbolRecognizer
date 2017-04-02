@@ -65,49 +65,41 @@ else:
 	# # biases b[10]
 	# b = tf.Variable(tf.zeros([10]))
 
-	W1 = tf.Variable(tf.truncated_normal([width*height, 200] ,stddev=0.1))
-	B1 = tf.Variable(tf.zeros([200]))
+	K = 6
+	L = 12
+	M = 24
+	N = 200
 
+	pkeep = tf.placeholder(tf.float32)
+	# 5 x 5 fully output
+	# shrink to 
 
-	W2 = tf.Variable(tf.truncated_normal([200, 100] ,stddev=0.1))
-	B2 = tf.Variable(tf.zeros([100]))
+	W1 = tf.Variable(tf.truncated_normal([5, 5, 1, K], stddev=0.1))  # 5x5 patch, 1 input channel, K output channels
+	B1 = tf.Variable(tf.ones([K])/10)
+	W2 = tf.Variable(tf.truncated_normal([5, 5, K, L], stddev=0.1))
+	B2 = tf.Variable(tf.ones([L])/10)
+	W3 = tf.Variable(tf.truncated_normal([4, 4, L, M], stddev=0.1))
+	B3 = tf.Variable(tf.ones([M])/10)
 
-	W3 = tf.Variable(tf.truncated_normal([100, 60] ,stddev=0.1))
-	B3 = tf.Variable(tf.zeros([60]))
-
-	W4 = tf.Variable(tf.truncated_normal([60, 30] ,stddev=0.1))
-	B4 = tf.Variable(tf.zeros([30]))
-
-	W5 = tf.Variable(tf.truncated_normal([30, 10], stddev=0.1))
-	B5 = tf.Variable(tf.zeros([10]))
-
-	# flatten the images into a single line of pixels
-	# -1 in the shape definition means "the only possible dimension that will preserve the number of elements"
-	XX = tf.reshape(X, [-1, 784])
-
-
-	tf.add_to_collection('W', W1)
-	tf.add_to_collection('W', W2)
-	tf.add_to_collection('W', W3)
-	tf.add_to_collection('W', W4)
-	tf.add_to_collection('W', W5)
-
-
-	tf.add_to_collection('B', B1)
-	tf.add_to_collection('B', B2)
-	tf.add_to_collection('B', B3)
-	tf.add_to_collection('B', B4)
-	tf.add_to_collection('B', B5)
+	W4 = tf.Variable(tf.truncated_normal([7 * 7 * M, N], stddev=0.1))
+	B4 = tf.Variable(tf.ones([N])/10)
+	W5 = tf.Variable(tf.truncated_normal([N, 10], stddev=0.1))
+	B5 = tf.Variable(tf.ones([10])/10)
 
 	# The model
+	stride = 1  # output is 28x28
+	Y1 = tf.nn.relu(tf.nn.conv2d(X, W1, strides=[1, stride, stride, 1], padding='SAME') + B1)
+	stride = 2  # output is 14x14
+	Y2 = tf.nn.relu(tf.nn.conv2d(Y1, W2, strides=[1, stride, stride, 1], padding='SAME') + B2)
+	stride = 2  # output is 7x7
+	Y3 = tf.nn.relu(tf.nn.conv2d(Y2, W3, strides=[1, stride, stride, 1], padding='SAME') + B3)
 
-
-	Y1 = tf.nn.relu(tf.matmul(XX, W1) + B1)
-	Y2 = tf.nn.relu(tf.matmul(Y1, W2) + B2)
-	Y3 = tf.nn.relu(tf.matmul(Y2, W3) + B3)
-	Y4 = tf.nn.relu(tf.matmul(Y3, W4) + B4)
+	# reshape the output from the third convolution for the fully connected layer
+	YY = tf.reshape(Y3, shape=[-1, 7 * 7 * M])
+	YYd = tf.nn.dropout(YY, pkeep)
+	Y4 = tf.nn.relu(tf.matmul(YY, W4) + B4)
 	Ylogits = tf.matmul(Y4, W5) + B5
-	Y  = tf.nn.softmax(Ylogits)
+	Y = tf.nn.softmax(Ylogits)
 
 	tf.add_to_collection('Y', Y)
 	tf.add_to_collection('X', X)
@@ -131,7 +123,7 @@ else:
 	accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 	# training, learning rate = 0.005
-	train_step = tf.train.AdamOptimizer(0.005).minimize(cross_entropy)
+	train_step = tf.train.AdamOptimizer(lr).minimize(cross_entropy)
 
 	# matplotlib visualisation
 	allweights = tf.reshape(W2, [-1])
@@ -155,33 +147,32 @@ else:
 	    lrmin = 0.0001;
 	    decay_speed = 2000.0;
 	    learningRate = lrmin+(lrmax-lrmin)*math.exp(-i/decay_speed);
-	    print( batch_X[0]);
-	    # sys.exit()
+
 	    # compute training values for visualisation
 	    if update_train_data:
-	        a, c, im, w, b = sess.run([accuracy, cross_entropy, I, allweights, allbiases], feed_dict={X: batch_X, Y_: batch_Y, })
+	        a, c, im, w, b = sess.run([accuracy, cross_entropy, I, allweights, allbiases], feed_dict={X: batch_X, Y_: batch_Y, pkeep: 1.0})
 	        datavis.append_training_curves_data(i, a, c)
 	        datavis.append_data_histograms(i, w, b)
 	        datavis.update_image1(im)
-	        print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " with learning " + str(learningRate) + " " + str(i) + "th iteration")
+	        print(str(i) + ": accuracy:" + str(a) + " loss: " + str(c) + " with learning " + str(learningRate))
 
 	    # compute test values for visualisation
 	    if update_test_data:
-	        a, c, im = sess.run([accuracy, cross_entropy, It], feed_dict={X: mnist.test.images, Y_: mnist.test.labels})
+	        a, c, im = sess.run([accuracy, cross_entropy, It], feed_dict={X: mnist.test.images, Y_: mnist.test.labels, pkeep: 1.0})
 	        datavis.append_test_curves_data(i, a, c)
 	        datavis.update_image2(im)
 	        print(str(i) + ": ********* epoch " + str(i*100//mnist.train.images.shape[0]+1) + " ********* test accuracy:" + str(a) + " test loss: " + str(c))
 
 	    # the backpropagation training step
-	    sess.run(train_step, feed_dict={X: batch_X, Y_: batch_Y, lr: learningRate})
+	    sess.run(train_step, feed_dict={X: batch_X, Y_: batch_Y, lr: learningRate, pkeep: 0.75})
 
 
 	datavis.animate(training_step, iterations=1000+1, train_data_update_freq=10, test_data_update_freq=50, more_tests_at_start=True)
 
 	# to save the animation as a movie, add save_movie=True as an argument to datavis.animate
 	# to disable the visualisation use the following line instead of the datavis.animate line
-	saver = tf.train.Saver()
 	# for i in range(2000+1): training_step(i, i % 50 == 0, i % 10 == 0)
-	saver.save(sess, sessionName);
+	saver = tf.train.Saver()
+	saver.save(sess, sessionName)
 
 	print("max test accuracy: " + str(datavis.get_max_test_accuracy()))
